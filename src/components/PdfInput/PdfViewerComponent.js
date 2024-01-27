@@ -1,76 +1,60 @@
-import React, { useState, useEffect } from 'react';
-import { Document, Page } from 'react-pdf';
+import React, { useState, useEffect, useRef } from 'react';
+import * as pdfjsLib from 'pdfjs-dist/build/pdf';
+import 'pdfjs-dist/build/pdf.worker.entry';
 
-// Componente responsável por exibir um documento PDF
 const PdfViewerComponent = ({ file }) => {
-  // Estado para armazenar o número total de páginas no PDF
-  const [numPages, setNumPages] = useState(null);
-  // Estado para armazenar a página atual que está sendo exibida
   const [pageNumber, setPageNumber] = useState(1);
-  const [loadError, setLoadError] = useState(null);
+  const [numPages, setNumPages] = useState(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    // Resetar o erro ao tentar carregar um novo arquivo
-    setLoadError(null);
-  }, [file]);
+    const fetchPdf = async () => {
+      try {
+        // Carregar o documento PDF
+        const pdf = await pdfjsLib.getDocument(file).promise;
 
-  // Função chamada quando o documento PDF é carregado com sucesso
-  const onDocumentLoadSuccess = (pdfDocument) => {
-    // Define o número total de páginas do documento
-    setNumPages(pdfDocument.numPages);
-    // Reseta a visualização para a primeira página
-    setPageNumber(1);
-  };
+        // Define o número total de páginas
+        setNumPages(pdf.numPages);
 
-  // Função chamada em caso de erro no carregamento do documento
-  const onDocumentLoadError = (error) => {
-    console.error('Error loading document:', error);
-    setLoadError('Falha ao carregar o documento PDF.', error);
-  };
+        // Obter a página desejada
+        const page = await pdf.getPage(pageNumber);
 
-  // Função para navegar para a página anterior
-  const goToPreviousPage = () => {
-    setPageNumber((prevPageNumber) => prevPageNumber > 1 ? prevPageNumber - 1 : 1);
-  };
+        // Configurar o canvas para renderizar o PDF
+        const canvas = canvasRef.current;
+        const context = canvas.getContext('2d');
+        const viewport = page.getViewport({ scale: 1.5 });
 
-  // Função para navegar para a próxima página
-  const goToNextPage = () => {
-    setPageNumber((prevPageNumber) => numPages && prevPageNumber < numPages ? prevPageNumber + 1 : prevPageNumber);
-  };
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-  // Função para voltar para a primeira página
-  const goToFirstPage = () => {
-    setPageNumber(1);
-  };
+        // Renderizar a página no canvas
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+        await page.render(renderContext).promise;
+      } catch (error) {
+        console.error('Erro ao carregar o PDF:', error);
+      }
+    };
+
+    if (file) {
+      fetchPdf();
+    }
+  }, [file, pageNumber]);
+
+  const goToPreviousPage = () => setPageNumber((prevPage) => prevPage > 1 ? prevPage - 1 : prevPage);
+  const goToNextPage = () => setPageNumber((prevPage) => prevPage < numPages ? prevPage + 1 : prevPage);
 
   return (
-    <>
-      {loadError ? (
-        <div style={{ color: 'red' }}>{loadError}</div> // Exibir mensagem de erro, se houver
-      ) : (
-    <>
-      <Document
-        file={file}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-      >
-        <Page pageNumber={pageNumber} />
-      </Document>
+    <div>
+      <canvas ref={canvasRef} />
       <div>
-        {/* Renderiza botões de navegação e informações sobre a página atual */}
-        {pageNumber > 1 && (
-          <button onClick={goToPreviousPage}>Anterior</button>
-        )}
+        {pageNumber > 1 && <button onClick={goToPreviousPage}>Anterior</button>}
         <span>Página {pageNumber} de {numPages}</span>
-        {pageNumber < numPages ? (
-          <button onClick={goToNextPage}>Próxima</button>
-        ) : (
-          <button onClick={goToFirstPage}>Início</button>
-        )}
+        {pageNumber < numPages && <button onClick={goToNextPage}>Próxima</button>}
       </div>
-    </>
-    )}
-  </>
+    </div>
   );
 };
 
